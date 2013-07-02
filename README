@@ -4,6 +4,23 @@ Use at your own risk; feedback appreciated!
 
 MT / 17.05.2013
 
-epso-02.pl
+EPSO-XX.PL 
+==========
+(where XX = version nr.; always use the one with the highest value)
 
-Retrieve and store content from the EPSO website
+Description: 
+Retrieve and store content from the EPSO website. Only Temporary Agent posts with grade
+group AD are considered right now. The single records from the EPSO website are stored
+in a textfile in the subfolder 
+
+<SOMEPATH>/epso/text
+
+New records (== new entries never seen before) are marked with
+
+***** NEW *****
+
+at the beginning. The decision, if a text record is new is by generating a SHA hash over 
+the record and compare it to all previously seen hash records. The hashes are stored in 
+a file called
+
+<SOMEPATH>/epso/text/hashes.txt
