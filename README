@@ -4,9 +4,8 @@ Use at your own risk; feedback appreciated!
 
 MT / 17.05.2013
 
-EPSO-XX.PL 
-==========
-(where XX = version nr.; always use the one with the highest value)
+EPSO.PL 
+=======
 
 Description: 
 Retrieve and store content from the EPSO website. Only Temporary Agent posts with grade
