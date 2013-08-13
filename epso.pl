@@ -73,11 +73,11 @@ while (defined $textarray[$counter]){
                 $textcounter++;
             }
             if($textarray[$textcounter] =~ m/AD/){
-                push(@hashtemp,$agency);
-                push(@hashtemp,$textarray[$hashcounter]);
+                push(@hashtemp,chomp($agency));
+                push(@hashtemp,chomp($textarray[$hashcounter]));
                 $hashcounter++;
                 while ($textarray[$hashcounter] ne ""){
-                    push(@hashtemp,$textarray[$hashcounter]);
+                    push(@hashtemp,chomp($textarray[$hashcounter]));
                     $hashcounter++;
                 }
                 $newhash = Digest::SHA->sha256_hex(@hashtemp);
