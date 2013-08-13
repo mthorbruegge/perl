@@ -4,6 +4,10 @@ use warnings;
 use LWP::Simple;
 use HTML::FormatText;
 use Digest::SHA;
+use Email::Sender::Simple qw(sendmail);
+use Email::Simple;
+use Email::Simple::Creator;
+use File::Slurp;
 
 my $DEBUG = 0;
 
@@ -21,6 +25,10 @@ my $textfileONLYNEW = $path."/epso/text/".$date."-epso-AD-NEW.txt";
 
 my $htmlcontent = get("http://europa.eu/epso/apply/jobs/temp/index_en.htm") or die "Error while retrieving page: $!\n";
 my $textcontent = HTML::FormatText->format_string($htmlcontent);
+
+# Remove any non-ascii character, as Digest::SHA barfs (at the moment) on those
+$textcontent =~ s/[[:^ascii:]]/ /g;
+
 my @textarray = split("\n",$textcontent);
 
 my $hashstorefile = $path."/epso/text/hashes.txt";
@@ -53,12 +61,13 @@ my @temparrayFULL = ();
 ## Variables for creation of a hash over one set of text
 
 my @hashtemp = ();      # Actual text-record; re-used 
-my $newhash = ();       # New hash value over the actual temporary text-record
+my $newhash;       # New hash value over the actual temporary text-record
 
 my $agency = "";
 
 while (defined $textarray[$counter]){
     $textarray[$counter] =~ s/^\s+//;
+
     if($textarray[$counter] =~ m/^\(/) {
         $agency = $textarray[$counter];
     }
@@ -73,14 +82,16 @@ while (defined $textarray[$counter]){
                 $textcounter++;
             }
             if($textarray[$textcounter] =~ m/AD/){
-                push(@hashtemp,chomp($agency));
-                push(@hashtemp,chomp($textarray[$hashcounter]));
+                push(@hashtemp,$agency);
+                push(@hashtemp,$textarray[$hashcounter]);
                 $hashcounter++;
                 while ($textarray[$hashcounter] ne ""){
-                    push(@hashtemp,chomp($textarray[$hashcounter]));
+                    push(@hashtemp,$textarray[$hashcounter]);
                     $hashcounter++;
                 }
+                
                 $newhash = Digest::SHA->sha256_hex(@hashtemp);
+                
                 if (&comparehash($newhash)) { 
                     push(@temparrayFULL,"***** NEW *****");
 
@@ -88,6 +99,7 @@ while (defined $textarray[$counter]){
 # to be done in this 'if' statement!
 
                 }
+                $newhash = '';
                 push(@temparrayFULL,$agency);
                 while ($textarray[$counter] ne ""){
                     push(@temparrayFULL,$textarray[$counter]);
@@ -128,6 +140,20 @@ close(FILE);
 #
 # close(FILE);
 
+my $emailBODY = read_file($textfileFULL);
+my $emailSUBJECT = "AD posts posted on EPSO - Date:".$date;
+
+# print $emailBODY."\n";
+
+#my $email = Email::Simple->create(
+#    header => [
+#    To      => '<SOME ADRESS>',
+#    From    => '<SOME ADRESS',
+#    Subject => $emailSUBJECT,
+#    ],
+#    body => $emailBODY,
+#);
+# sendmail($email);
 
 sub comparehash {
 
