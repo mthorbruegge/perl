@@ -1,5 +1,13 @@
-epso-01.pl
+Somewhen in the past
+--------------------
 Initial release
 
-epso-0.2.pl
+Somewhen in the past
+--------------------
 "NEW" entries marker now on top of dataset for easier spotting
+
+2013-08-13
+----------
+Fixed a bug  that prevented the script to run in some environments.
+(Removed newline when assembling string to calculate a new hash)
+ 
