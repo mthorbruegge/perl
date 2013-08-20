@@ -1,4 +1,5 @@
 #!/usr/bin/perl
+
 use strict;
 use warnings;
 use LWP::Simple;
@@ -9,7 +10,7 @@ use Email::Simple;
 use Email::Simple::Creator;
 use File::Slurp;
 
-my $DEBUG = 0;
+my $DEBUG = 1;
 
 # Where are we, on the live server or on the development system?
 
@@ -17,42 +18,60 @@ my $path = "<SOMEPATH>";
 
 my $counter = 0;
 
-my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime(time);
-my $date = ($year+1900).(sprintf("%02d",$mon+1)).(sprintf("%02d",$mday))."-".(sprintf("%02d",$hour)).":".(sprintf("%02d",$min)).":".(sprintf("%02d",$sec));
+my ( $sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst ) =
+  localtime(time);
 
-my $textfileFULL = $path."/epso/text/".$date."-epso-AD-FULL.txt";
-my $textfileONLYNEW = $path."/epso/text/".$date."-epso-AD-NEW.txt";
+my $date =
+    ( $year + 1900 )
+  . ( sprintf( "%02d", $mon + 1 ) )
+  . ( sprintf( "%02d", $mday ) ) . "-"
+  . ( sprintf( "%02d", $hour ) ) . ":"
+  . ( sprintf( "%02d", $min ) ) . ":"
+  . ( sprintf( "%02d", $sec ) );
 
-my $htmlcontent = get("http://europa.eu/epso/apply/jobs/temp/index_en.htm") or die "Error while retrieving page: $!\n";
+my $textfileFULL    = $path . "/epso/text/" . $date . "-epso-AD-FULL.txt";
+my $textfileONLYNEW = $path . "/epso/text/" . $date . "-epso-AD-NEW.txt";
+my @emails          = read_file( $path . "/epso/email-addresses.txt" );
+
+# Online version
+
+my $htmlcontent = get("http://europa.eu/epso/apply/jobs/temp/index_en.htm")
+  or die "Error while retrieving page: $!\n";
+
+# Offline version
+# my $htmlcontent = read_file($path."/epso/html-offline.html");
+
 my $textcontent = HTML::FormatText->format_string($htmlcontent);
 
-# Remove any non-ascii character, as Digest::SHA barfs (at the moment) on those
+# Remove any non-ascii character, as Digest::SHA barfs on those
 $textcontent =~ s/[[:^ascii:]]/ /g;
 
-my @textarray = split("\n",$textcontent);
+my @textarray = split( "\n", $textcontent );
 
-my $hashstorefile = $path."/epso/text/hashes.txt";
-my @hashstore = ();
+my $hashstorefile = $path . "/epso/text/hashes.txt";
+my @hashstore     = ();
 
-if (-e $hashstorefile) {
-    open(FILE,$hashstorefile) or die("Cannot open HASH file for reading: $!\n");
-} 
+if ( -e $hashstorefile ) {
+    open( FILE, $hashstorefile )
+      or die("Cannot open HASH file for reading: $!\n");
+}
 else {
-    open(FILE,">".$hashstorefile) or die("Cannot create HASH file: $!\n");
+    open( FILE, ">" . $hashstorefile ) or die("Cannot create HASH file: $!\n");
     close(FILE);
-    open(FILE,$hashstorefile) or die("Cannot open created HASH file for reading: $!\n");
+    open( FILE, $hashstorefile )
+      or die("Cannot open created HASH file for reading: $!\n");
 }
 
 my $hashstorecounter = 0;
 
-while ($hashstore[$hashstorecounter] = <FILE>) {
-    chomp($hashstore[$hashstorecounter]);
+while ( $hashstore[$hashstorecounter] = <FILE> ) {
+    chomp( $hashstore[$hashstorecounter] );
     $hashstorecounter++;
 }
 
 close(FILE);
 
-my $skipfirst = 0;
+my $skipfirst     = 0;
 my @temparrayFULL = ();
 
 # TODO: initialize the array for only the new records
@@ -60,52 +79,60 @@ my @temparrayFULL = ();
 
 ## Variables for creation of a hash over one set of text
 
-my @hashtemp = ();      # Actual text-record; re-used 
-my $newhash;       # New hash value over the actual temporary text-record
+my @hashtemp = ();    # Actual text-record; re-used
+my $newhash;          # New hash value over the actual temporary text-record
 
 my $agency = "";
 
-while (defined $textarray[$counter]){
+my $ecbbug = 0;
+
+
+while ( defined $textarray[$counter] ) {
     $textarray[$counter] =~ s/^\s+//;
 
-    if($textarray[$counter] =~ m/^\(/) {
+    if (( $textarray[$counter] =~ m/^\(/ ) 
+      && ( $textarray[$counter] !~ m/only\ applicable\ to\ candidates\ whose/ ) 
+      && ( $textarray[$counter] !~ m/11\:00/ )) { 
         $agency = $textarray[$counter];
+        $counter++;
     }
-    if($textarray[$counter] =~ m/^Temporary/){
-        if(!$skipfirst){
+    if (( $textarray[$counter] =~ m/^Temporary/ ) || ($agency =~ m/ECB/)) {
+        if (( !$skipfirst ) && ($textarray[$counter] =~ m/^Temporary/ )) {
             $skipfirst++;
         }
         else {
             my $textcounter = $counter;
             my $hashcounter = $counter;
-            while ($textarray[$textcounter] !~ m/Grade/) {
+
+            while ( $textarray[$textcounter] !~ m/Grade/ ) {
                 $textcounter++;
             }
-            if($textarray[$textcounter] =~ m/AD/){
-                push(@hashtemp,$agency);
-                push(@hashtemp,$textarray[$hashcounter]);
-                $hashcounter++;
-                while ($textarray[$hashcounter] ne ""){
-                    push(@hashtemp,$textarray[$hashcounter]);
+            if (( $textarray[$textcounter] =~ m/AD/ ) 
+             || ( $textarray[$textcounter] =~ m/Grade\: L|Grade\: K|Grade\: J|Grade\: I|Grade\: H|Grade\: G|Grade\: F\/G|Grade\: F|Grade\: E\/F/ )) {
+                push( @hashtemp, $agency );
+                while ( $textarray[$hashcounter] ) {
+                    push( @hashtemp, $textarray[$hashcounter] );
                     $hashcounter++;
                 }
-                
-                $newhash = Digest::SHA->sha256_hex(@hashtemp);
-                
-                if (&comparehash($newhash)) { 
-                    push(@temparrayFULL,"***** NEW *****");
 
-# TODO: routine to fill the array with text for only new entries
-# to be done in this 'if' statement!
+                $newhash = Digest::SHA->sha256_hex(@hashtemp);
+
+                if ( &comparehash($newhash) ) {
+                    push( @temparrayFULL, "***** NEW *****" );
+
+                # TODO: routine to fill the array with text for only new entries
+                # to be done in this 'if' statement!
 
                 }
                 $newhash = '';
-                push(@temparrayFULL,$agency);
-                while ($textarray[$counter] ne ""){
-                    push(@temparrayFULL,$textarray[$counter]);
+                if ($textarray[$counter]) { 
+                    push( @temparrayFULL, $agency );
+                }
+                while ( $textarray[$counter] ) {
+                    push( @temparrayFULL, $textarray[$counter] );
                     $counter++;
                 }
-                push(@temparrayFULL,"");
+                push( @temparrayFULL, "" );
                 @hashtemp = ();
             }
         }
@@ -113,63 +140,74 @@ while (defined $textarray[$counter]){
     $counter++;
 }
 
-open (FILE, ">>".$textfileFULL) or die "Error while opening file for Text storage: $!\n";                                                                                                                                                  
-binmode(FILE, ":utf8");                                                                                                                                                                                                                    
+open( FILE, ">>" . $textfileFULL )
+  or die "Error while opening file for Text storage: $!\n";
+binmode( FILE, ":utf8" );
 
 $counter = 0;
 
-while (defined $temparrayFULL[$counter]){                                                                                                                                                                                                      
-    $temparrayFULL[$counter] =~ s/^\s+//;                                                                                                                                                                                                  
-    print FILE $temparrayFULL[$counter]."\n";                                                                                                                                                                                              
-    $counter++;                                                                                                                                                                                                                        
-}                                                                                                                                                                                                                                          
+while ( defined $temparrayFULL[$counter] ) {
+    $temparrayFULL[$counter] =~ s/^\s+//;
+    print FILE $temparrayFULL[$counter] . "\n";
+    $counter++;
+}
 
 close(FILE);
 
 # TODO: here the routine to write only new records to another file
-# open (FILE, ">>".$textfileONLYNEW) or die "Error while opening file for Text storage: $!\n";                                                                                                                                                  
-# binmode(FILE, ":utf8");                                                                                                                                                                                                                    
+# open (FILE, ">>".$textfileONLYNEW) or die "Error while opening file for Text storage: $!\n";
+# binmode(FILE, ":utf8");
 #
 # $counter = 0;
 #
-# while (defined $temparrayFULL[$counter]){                                                                                                                                                                                                      
-#     $temparrayFULL[$counter] =~ s/^\s+//;                                                                                                                                                                                                  
-#     print FILE $temparrayFULL[$counter]."\n";                                                                                                                                                                                              
-#     $counter++;                                                                                                                                                                                                                        
-# }                                                                                                                                                                                                                                          
+# while (defined $temparrayFULL[$counter]){
+#     $temparrayFULL[$counter] =~ s/^\s+//;
+#     #print FILE $temparrayFULL[$counter]."\n";
+#     $counter++;
+# }
 #
 # close(FILE);
 
-my $emailBODY = read_file($textfileFULL);
-my $emailSUBJECT = "AD posts posted on EPSO - Date:".$date;
+my $emailBODY    = read_file($textfileFULL);
+my $emailSUBJECT = "[EU jobs] - AD posts published via EPSO - " . $date;
 
-# print $emailBODY."\n";
+$counter = 0;
 
-#my $email = Email::Simple->create(
-#    header => [
-#    To      => '<SOME ADRESS>',
-#    From    => '<SOME ADRESS',
-#    Subject => $emailSUBJECT,
-#    ],
-#    body => $emailBODY,
-#);
-# sendmail($email);
+while ( $emails[$counter] ) {
+
+    chomp( $emails[$counter] );
+
+    my $email = Email::Simple->create(
+        header => [
+            To      => $emails[$counter],
+            From    => '<SOME-ADDRESS>',
+            Subject => $emailSUBJECT,
+        ],
+        body => $emailBODY,
+    );
+
+    sendmail($email);
+
+    $counter++;
+
+}
 
 sub comparehash {
 
 # compare the calculated hash sum of the actual text array with $counter++; # all previous hashes from the hash-file
 
-    my $localcounter = 0; 
-    my $localstring = $_[0];
-    while ($hashstore[$localcounter]) {
-        if ($hashstore[$localcounter] eq $localstring) {
+    my $localcounter = 0;
+    my $localstring  = $_[0];
+    while ( $hashstore[$localcounter] ) {
+        if ( $hashstore[$localcounter] eq $localstring ) {
             return undef;
         }
         $localcounter++;
     }
-    open (FILE, ">>".$hashstorefile) or die "Error while opening file for Text storage: $!\n";
-    binmode(FILE, ":utf8");
-    print FILE $_[0]."\n";
+    open( FILE, ">>" . $hashstorefile )
+      or die "Error while opening file for Text storage: $!\n";
+    binmode( FILE, ":utf8" );
+    print FILE $_[0] . "\n";
     close(FILE);
     $hashstore[$localcounter] = $localstring;
     return 1;
