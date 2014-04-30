@@ -35,8 +35,11 @@ my $htmlcontent = get("http://europa.eu/epso/apply/jobs/temp/index_en.htm")
 
 my $textcontent = HTML::FormatText->format_string($htmlcontent);
 
+
+## CHECK!!!
 # Remove any non-ascii character, as Digest::SHA barfs on those
 $textcontent =~ s/[[:^ascii:]]/ /g;
+## CHECK!!!
 
 my @textarray = split( "\n", $textcontent );
 
@@ -54,12 +57,14 @@ else {
       or die("Cannot open created HASH file for reading: $!\n");
 }
 
+## CHECK!!
 my $hashstorecounter = 0;
 
 while ( $hashstore[$hashstorecounter] = <FILE> ) {
     chomp( $hashstore[$hashstorecounter] );
     ++$hashstorecounter;
 }
+## CHECK!!
 
 close(FILE);
 
@@ -76,6 +81,7 @@ my $agency = "";
 while ( defined $textarray[$counter] ) {
     $textarray[$counter] =~ s/^\s+//;
 
+## CHECK!!
 # Usually a headline for an Agency is of the form "(ENISA)", so we check for /^(
 # Sadly EPSO uses brackets at the beginning of other lines as well, so we need to tackle
 # each of those cases as well
@@ -132,6 +138,8 @@ while ( defined $textarray[$counter] ) {
     }
     ++$counter;
 }
+## CHECK!! (Make modular)
+
 
 open( FILE, ">>" . $textfileFULL )
   or die "Error while opening file for Text storage: $!\n";
